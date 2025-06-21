@@ -1,0 +1,52 @@
+# Node modules (always ignore this)
+node_modules/
+
+# dotenv environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Optional IDE/editor folders
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Optional: ignore frontend build (if MERN full-stack)
+build/
+dist/
+
+# Coverage (for tests)
+coverage/
+
+# Ignore MongoDB local DB dumps (if any)
+dump/
+
+# Ignore uploads/temp files
+uploads/
+temp/
+tmp/
+
+# TypeScript output (if using TS)
+*.tsbuildinfo
+
+# Ignore static cache/lock
+.cache/
+.pnpm-store/
+.parcel-cache/
+
+# Ignore Mac/Linux swap/lock files
+*.swp
+*.lock
