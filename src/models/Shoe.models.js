@@ -17,4 +17,4 @@ const shoeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("Shoe", shoeSchema);
+export const Shoe = mongoose.model("Shoe", shoeSchema);
