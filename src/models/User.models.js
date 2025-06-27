@@ -1,5 +1,4 @@
-// /models/User.js
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
@@ -36,6 +35,9 @@ const userSchema = new mongoose.Schema(
     otpExpiry: {
       type: Date,
     },
+    phone: {
+      type: String,
+    },
 
     address: {
       street: String,
@@ -46,6 +48,9 @@ const userSchema = new mongoose.Schema(
         type: String,
         default: "Pakistan",
       },
+    },
+    map: {
+      type: String,
     },
   },
   {
