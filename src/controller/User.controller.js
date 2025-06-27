@@ -2,6 +2,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/User.models.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
 import crypto from "crypto";
@@ -186,7 +188,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Logged out successfully"));
 });
 const resetPassword = asyncHandler(async (req, res) => {
-  const token = req.params.resetToken;
+  const token = req.body.resetToken || req.query.token;
 
   if (!token) {
     throw new ApiError(400, "Reset token is missing");
