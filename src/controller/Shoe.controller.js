@@ -2,7 +2,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { Shoe } from "../models/Shoe.models.js";
-
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { v2 as cloudinary } from "cloudinary";
 // CORE CRUD OPERATIONS
 
 /**
@@ -26,12 +27,35 @@ const createShoe = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Name, price, gender, and category are required");
   }
 
-  // If images are uploaded through middleware, process them
+  // Handle image uploads
   let imageUrls = [];
   if (req.files && req.files.length > 0) {
-    imageUrls = req.files.map((file) => file.path);
+    console.log("Processing uploaded files:", req.files.length);
+
+    // Process each uploaded file
+    for (const file of req.files) {
+      console.log("Processing file:", file.originalname, "at path:", file.path);
+
+      const result = await uploadOnCloudinary(file.path, "shoes");
+
+      // Check if upload was successful
+      if (!result) {
+        console.log("Upload failed for file:", file.originalname);
+        throw new ApiError(
+          500,
+          `Error uploading image ${file.originalname} to cloudinary`
+        );
+      }
+
+      // Add image URL to array
+      if (result?.url) {
+        console.log("Successfully uploaded:", result.url);
+        imageUrls.push(result.url);
+      }
+    }
   }
 
+  // Create the shoe record in database
   const shoe = await Shoe.create({
     name,
     description,
@@ -45,9 +69,71 @@ const createShoe = asyncHandler(async (req, res) => {
     season: season || "all",
   });
 
+  // Return success response
   return res
     .status(201)
     .json(new ApiResponse(201, shoe, "Shoe created successfully"));
+});
+
+/**
+ * Update a shoe (Admin only)
+ */
+const updateShoe = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    description,
+    price,
+    brand,
+    sizes,
+    stock,
+    gender,
+    category,
+    season,
+  } = req.body;
+
+  // Find the shoe by ID
+  const shoe = await Shoe.findById(id);
+  if (!shoe) {
+    throw new ApiError(404, "Shoe not found");
+  }
+
+  // Update fields if provided
+  if (name) shoe.name = name;
+  if (description) shoe.description = description;
+  if (price) shoe.price = price;
+  if (brand) shoe.brand = brand;
+  if (sizes) shoe.sizes = sizes;
+  if (stock !== undefined) shoe.stock = stock;
+  if (gender) shoe.gender = gender;
+  if (category) shoe.category = category;
+  if (season) shoe.season = season;
+
+  // Handle image uploads
+  if (req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      // Upload each file to cloudinary
+      const result = await uploadOnCloudinary(file.path, "shoes");
+
+      // Check if upload was successful
+      if (!result) {
+        throw new ApiError(500, "Error uploading images to cloudinary");
+      }
+
+      // Add new image URL to shoe's images array
+      if (result?.url) {
+        shoe.images.push(result.url);
+      }
+    }
+  }
+
+  // Save the updated shoe
+  await shoe.save();
+
+  // Return success response
+  return res
+    .status(200)
+    .json(new ApiResponse(200, shoe, "Shoe updated successfully"));
 });
 
 /**
@@ -107,52 +193,6 @@ const getShoeById = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, shoe, "Shoe retrieved successfully"));
-});
-
-/**
- * Update a shoe (Admin only)
- */
-const updateShoe = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const {
-    name,
-    description,
-    price,
-    brand,
-    sizes,
-    stock,
-    gender,
-    category,
-    season,
-  } = req.body;
-
-  const shoe = await Shoe.findById(id);
-  if (!shoe) {
-    throw new ApiError(404, "Shoe not found");
-  }
-
-  // Update fields if provided
-  if (name) shoe.name = name;
-  if (description) shoe.description = description;
-  if (price) shoe.price = price;
-  if (brand) shoe.brand = brand;
-  if (sizes) shoe.sizes = sizes;
-  if (stock !== undefined) shoe.stock = stock;
-  if (gender) shoe.gender = gender;
-  if (category) shoe.category = category;
-  if (season) shoe.season = season;
-
-  // If new images are uploaded, add them
-  if (req.files && req.files.length > 0) {
-    const newImageUrls = req.files.map((file) => file.path);
-    shoe.images = [...shoe.images, ...newImageUrls];
-  }
-
-  await shoe.save();
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, shoe, "Shoe updated successfully"));
 });
 
 /**

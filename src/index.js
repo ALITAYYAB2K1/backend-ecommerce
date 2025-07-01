@@ -1,7 +1,8 @@
+// Must be first import to ensure environment variables are loaded
 import dotenv from "dotenv";
-dotenv.config({
-  path: "../.env",
-});
+dotenv.config();
+
+// Now we can import modules that depend on environment variables
 import connectDB from "./db/index.js";
 import app from "./app.js";
 connectDB()

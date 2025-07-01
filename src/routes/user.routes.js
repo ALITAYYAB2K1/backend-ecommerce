@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { upload } from "../middlewares/multer.middleware.js";
 import {
   // User authentication controllers only
   registerUser,
@@ -25,6 +26,7 @@ import {
   getSimilarShoes,
   addShoeToWishlist,
   rateOrReviewShoe,
+  createShoe, // Add this for testing
 } from "../controller/Shoe.controller.js";
 
 const router = Router();
@@ -41,6 +43,9 @@ router.route("/profile").get(verifyJWT, getUserProfile);
 
 // PUBLIC SHOE BROWSING ROUTES
 router.route("/shoes").get(getAllShoes);
+
+// TEMPORARY TEST ROUTE FOR DEBUGGING (REMOVE IN PRODUCTION)
+router.route("/test-shoe-upload").post(upload.array("images", 5), createShoe);
 
 router.route("/shoes/:id").get(getShoeById);
 
