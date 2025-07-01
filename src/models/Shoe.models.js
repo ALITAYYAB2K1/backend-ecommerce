@@ -1,4 +1,5 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
+
 const shoeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
@@ -14,6 +15,8 @@ const shoeSchema = new mongoose.Schema({
     required: true,
   },
   season: { type: String, enum: ["summer", "winter", "all"], default: "all" },
+  isArchived: { type: Boolean, default: false },
+  discount: { type: Number, default: 0 }, // Percentage discount
   createdAt: { type: Date, default: Date.now },
 });
 

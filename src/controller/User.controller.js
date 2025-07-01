@@ -136,35 +136,59 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email }).select("+password");
-
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    throw new ApiError(401, "Invalid email or password");
+  // First, check if the user exists
+  const userExists = await User.findOne({ email });
+  if (!userExists) {
+    throw new ApiError(401, "User not found with this email");
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
-    user._id
-  );
+  // Explicitly fetch the user with password included
+  const user = await User.findById(userExists._id).select("+password");
 
-  const safeUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
+  // Check if password field exists
+  if (!user.password) {
+    throw new ApiError(500, "Password field is missing in user document");
+  }
 
-  return res
-    .status(200)
-    .cookie("accessToken", accessToken, { httpOnly: true })
-    .cookie("refreshToken", refreshToken, { httpOnly: true })
-    .json(
-      new ApiResponse(
-        200,
-        {
-          user: safeUser, // Includes role field (admin, manager, customer)
-          accessToken,
-          refreshToken,
-        },
-        `Login successful as ${safeUser.role}`
-      )
+  // Log password length for debugging (DO NOT log actual password)
+  console.log(`Password hash length: ${user.password.length}`);
+
+  try {
+    // Compare passwords
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      throw new ApiError(401, "Invalid password");
+    }
+
+    // Generate tokens
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+      user._id
     );
+
+    const safeUser = await User.findById(user._id).select(
+      "-password -refreshToken"
+    );
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, { httpOnly: true })
+      .cookie("refreshToken", refreshToken, { httpOnly: true })
+      .json(
+        new ApiResponse(
+          200,
+          {
+            user: safeUser,
+            accessToken,
+            refreshToken,
+          },
+          `Login successful as ${safeUser.role}`
+        )
+      );
+  } catch (error) {
+    console.error("Login error:", error);
+    throw new ApiError(401, "Invalid credentials");
+  }
 });
 const logoutUser = asyncHandler(async (req, res) => {
   // Optional: clear refreshToken from DB
@@ -379,6 +403,70 @@ const getUserProfile = asyncHandler(async (req, res) => {
       new ApiResponse(200, { user }, "User profile retrieved successfully")
     );
 });
+const getAllUsers = asyncHandler(async (req, res) => {
+  // Parse query parameters for pagination and filtering
+  const {
+    page = 1,
+    limit = 10,
+    sort = "createdAt",
+    order = "desc",
+    search = "",
+    role,
+  } = req.query;
+
+  const pageNumber = parseInt(page);
+  const limitNumber = parseInt(limit);
+
+  // Build sort object for mongoose
+  const sortObject = {};
+  sortObject[sort] = order === "desc" ? -1 : 1;
+
+  // Build filter object - START WITH isAdmin = false to exclude admins
+  const filter = { isAdmin: false };
+
+  // Add search filter if provided
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { phone: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  // Add role filter if provided
+  if (role) {
+    filter.role = role;
+  }
+
+  // Execute query with pagination
+  const users = await User.find(filter)
+    .select(
+      "-password -refreshToken -resetPasswordToken -resetPasswordExpire -otp -otpExpiry"
+    )
+    .sort(sortObject)
+    .skip((pageNumber - 1) * limitNumber)
+    .limit(limitNumber);
+
+  // Get total count for pagination
+  const totalUsers = await User.countDocuments(filter);
+  const totalPages = Math.ceil(totalUsers / limitNumber);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        users,
+        pagination: {
+          total: totalUsers,
+          page: pageNumber,
+          limit: limitNumber,
+          totalPages,
+        },
+      },
+      "Regular users retrieved successfully"
+    )
+  );
+});
 export {
   registerUser,
   registerAdmin,
@@ -389,4 +477,5 @@ export {
   getUserProfile,
   updatePassword,
   forgotPassword,
+  getAllUsers,
 };
