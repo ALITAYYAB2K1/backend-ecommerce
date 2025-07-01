@@ -8,6 +8,8 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
 import crypto from "crypto";
 import { image_ID_Parser } from "../utils/imageParser.js";
+
+import { sendEmail } from "../utils/sendEmail.js";
 const generateAccessAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -187,66 +189,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, null, "Logged out successfully"));
 });
-const resetPassword = asyncHandler(async (req, res) => {
-  const token = req.body.resetToken || req.query.token;
 
-  if (!token) {
-    throw new ApiError(400, "Reset token is missing");
-  }
-
-  const resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
-
-  const user = await User.findOne({
-    resetPasswordToken,
-    resetPasswordExpire: { $gt: Date.now() },
-  });
-
-  if (!user) {
-    throw new ApiError(400, "Token is invalid or has expired");
-  }
-
-  const { password, confirmPassword } = req.body;
-
-  if (!password || !confirmPassword) {
-    throw new ApiError(400, "Password and Confirm Password are required");
-  }
-
-  if (password !== confirmPassword) {
-    throw new ApiError(400, "Passwords do not match");
-  }
-
-  // Update password and clear reset fields
-  user.password = password;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpire = undefined;
-
-  await user.save({ validateBeforeSave: false });
-
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
-    user._id
-  );
-
-  const options = {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-  };
-
-  return res
-    .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
-    .json(
-      new ApiResponse(
-        200,
-        { accessToken, refreshToken },
-        `Password reset successfully for ${user.role}`
-      )
-    );
-});
 const updateUserInfo = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
@@ -278,6 +221,164 @@ const updateUserInfo = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, updatedUser, "User info updated successfully"));
 });
+// Add these functions to your User.controller.js file
+
+// For logged-in users to update their password
+const updatePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user._id;
+
+  // Validation
+  if (!currentPassword || !newPassword) {
+    throw new ApiError(400, "Current password and new password are required");
+  }
+
+  // Get user with password
+  const user = await User.findById(userId).select("+password");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Check if current password is correct
+  const isPasswordCorrect = await user.isPasswordCorrect(currentPassword);
+  if (!isPasswordCorrect) {
+    throw new ApiError(401, "Current password is incorrect");
+  }
+
+  // Update password
+  user.password = newPassword;
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password updated successfully"));
+});
+
+// Request password reset (sends email with reset link)
+const forgotPassword = asyncHandler(async (req, res) => {
+  console.log("Request body:", req.body); // Add this for debugging
+  const { email } = req.body;
+
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, "No user found with this email");
+  }
+
+  // Generate reset token
+  const resetToken = user.generateResetPasswordToken();
+  await user.save({ validateBeforeSave: false });
+
+  // Create reset URL
+  const resetUrl = `${req.protocol}://${req.get(
+    "host"
+  )}/api/v1/password/reset/${resetToken}`;
+
+  const message = `You requested a password reset. Please make a PUT request to: \n\n ${resetUrl} \n\n If you didn't request this, please ignore this email.`;
+
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: "Password Reset Token",
+      message,
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "Password reset email sent successfully"));
+  } catch (error) {
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    throw new ApiError(500, "Email could not be sent. Please try again later.");
+  }
+});
+
+// Process reset password with token from URL
+const resetPassword = asyncHandler(async (req, res) => {
+  // Get token from params and hash it
+  const resetToken = req.params.resetToken;
+  const resetPasswordToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  // Find user with valid token
+  const user = await User.findOne({
+    resetPasswordToken,
+    resetPasswordExpire: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    throw new ApiError(400, "Password reset token is invalid or has expired");
+  }
+
+  // Validate password
+  const { password, confirmPassword } = req.body;
+
+  if (!password || !confirmPassword) {
+    throw new ApiError(400, "Password and Confirm Password are required");
+  }
+
+  if (password !== confirmPassword) {
+    throw new ApiError(400, "Passwords do not match");
+  }
+
+  // Update password and clear reset fields
+  user.password = password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+
+  await user.save();
+
+  // Generate new tokens
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        { accessToken, refreshToken },
+        "Password reset successful"
+      )
+    );
+});
+
+// Get user profile (implementation as requested)
+const getUserProfile = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  if (!userId) {
+    throw new ApiError(401, "Authentication required");
+  }
+
+  const user = await User.findById(userId).select("-password -refreshToken");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, { user }, "User profile retrieved successfully")
+    );
+});
 export {
   registerUser,
   registerAdmin,
@@ -285,4 +386,7 @@ export {
   logoutUser,
   resetPassword,
   updateUserInfo,
+  getUserProfile,
+  updatePassword,
+  forgotPassword,
 };
