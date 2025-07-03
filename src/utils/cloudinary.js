@@ -1,71 +1,80 @@
 import { v2 as cloudinary } from "cloudinary";
+import DataURIParser from "datauri/parser.js";
+import path from "path";
 import fs from "fs";
 
-// Temporary hardcoded values for testing
-const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || "de0trqals";
-const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || "343192345136392";
-const CLOUDINARY_API_SECRET =
-  process.env.CLOUDINARY_API_SECRET || "KDxS3Ag4EjiILDa8nDJ7idlWpA4";
-
+// Force direct configuration with hardcoded values from your .env
+// This bypasses any environment variable loading issues
 cloudinary.config({
-  cloud_name: CLOUDINARY_CLOUD_NAME,
-  api_key: CLOUDINARY_API_KEY,
-  api_secret: CLOUDINARY_API_SECRET,
+  cloud_name: "dutan9dsu",
+  api_key: "599555579838858",
+  api_secret: "ybPXdUJ37uvhioq6CIIqjCefHPU",
 });
 
-// Test cloudinary configuration
-console.log("Cloudinary Configuration:");
-console.log("Cloud Name:", CLOUDINARY_CLOUD_NAME);
-console.log("API Key:", CLOUDINARY_API_KEY ? "SET" : "NOT SET");
-console.log("API Secret:", CLOUDINARY_API_SECRET ? "SET" : "NOT SET");
+// Log the actual configuration values used
+console.log("Cloudinary Direct Configuration:", {
+  cloud_name: cloudinary.config().cloud_name,
+  api_key_exists: !!cloudinary.config().api_key,
+  api_secret_exists: !!cloudinary.config().api_secret,
+});
 
-//upload file on cloudinary
-const uploadOnCloudinary = async (localFilePath, folder = "uploads") => {
+const parser = new DataURIParser();
+
+const uploadOnCloudinary = async (filePath, folder = "") => {
   try {
-    if (!localFilePath) {
-      console.log("No file path provided");
+    if (!filePath) {
+      console.log("No file path provided to uploadOnCloudinary");
       return null;
     }
+
+    console.log("Uploading file to Cloudinary:", {
+      filePath,
+      folder,
+    });
 
     // Check if file exists
-    if (!fs.existsSync(localFilePath)) {
-      console.log("File does not exist:", localFilePath);
+    if (!fs.existsSync(filePath)) {
+      console.error("File not found at path:", filePath);
       return null;
     }
 
-    console.log("Attempting to upload file:", localFilePath);
-    console.log("Cloudinary config check:", {
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "SET" : "NOT SET",
-      api_key: process.env.CLOUDINARY_API_KEY ? "SET" : "NOT SET",
-      api_secret: process.env.CLOUDINARY_API_SECRET ? "SET" : "NOT SET",
+    // Extract file extension from path
+    const fileFormat = path.extname(filePath);
+
+    // Read file from disk and convert to data URI
+    const fileBuffer = fs.readFileSync(filePath);
+    const fileUri = parser.format(fileFormat, fileBuffer);
+
+    // Upload to Cloudinary using a Promise
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(
+        fileUri.content,
+        {
+          folder,
+          resource_type: "auto",
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            reject(error);
+          } else {
+            console.log("Cloudinary upload success:", result.url);
+
+            // Delete the temporary file after successful upload
+            try {
+              fs.unlinkSync(filePath);
+              console.log("Temporary file deleted:", filePath);
+            } catch (err) {
+              console.error("Error deleting temporary file:", err);
+            }
+
+            resolve(result);
+          }
+        }
+      );
     });
-
-    //upload the file on cloudinary
-    const response = await cloudinary.uploader.upload(localFilePath, {
-      resource_type: "auto",
-      folder: folder,
-    });
-
-    //file has been uploaded
-    console.log("File uploaded successfully on cloudinary", response.url);
-
-    // Clean up local file after successful upload
-    if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath);
-    }
-
-    return response;
   } catch (error) {
-    // Clean up local file even if upload failed
-    if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath);
-    }
-
-    console.log("Detailed error while uploading file on cloudinary:");
-    console.log("Error message:", error.message);
-    console.log("Error stack:", error.stack);
-    console.log("Full error object:", error);
-
+    console.error("Error in uploadOnCloudinary:", error);
     return null;
   }
 };

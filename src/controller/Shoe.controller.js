@@ -4,8 +4,46 @@ import { ApiError } from "../utils/ApiError.js";
 import { Shoe } from "../models/Shoe.models.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
-// CORE CRUD OPERATIONS
 
+// Helper function to delete an image from Cloudinary
+const deleteImageFromCloudinary = async (imageUrl) => {
+  try {
+    if (!imageUrl) return { success: false, message: "No image URL provided" };
+
+    // Extract the public ID from the Cloudinary URL
+    const urlParts = imageUrl.split("/");
+    const publicIdWithExtension = urlParts[urlParts.length - 1];
+    const publicId = publicIdWithExtension.split(".")[0];
+
+    // If images are in a folder, include the folder path
+    let fullPublicId = publicId;
+    if (imageUrl.includes("/shoes/")) {
+      fullPublicId = `shoes/${publicId}`;
+    }
+
+    console.log(`Deleting image with public ID: ${fullPublicId}`);
+
+    // Delete the image from Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.destroy(fullPublicId, (error, result) => {
+        if (error) {
+          console.error(`Error deleting image ${fullPublicId}:`, error);
+          reject(error);
+        } else {
+          console.log(`Image ${fullPublicId} deleted successfully:`, result);
+          resolve(result);
+        }
+      });
+    });
+
+    return { success: true, result };
+  } catch (error) {
+    console.error(`Error processing image deletion:`, error);
+    return { success: false, error };
+  }
+};
+
+// CORE CRUD OPERATIONS
 /**
  * Create a new shoe (Admin only)
  */
@@ -90,6 +128,7 @@ const updateShoe = asyncHandler(async (req, res) => {
     gender,
     category,
     season,
+    keepImages, // New field - array of indices of images to keep
   } = req.body;
 
   // Find the shoe by ID
@@ -109,9 +148,65 @@ const updateShoe = asyncHandler(async (req, res) => {
   if (category) shoe.category = category;
   if (season) shoe.season = season;
 
-  // Handle image uploads
+  // Handle image deletions if keepImages is provided
+  if (keepImages !== undefined && shoe.images && shoe.images.length > 0) {
+    console.log("Managing images with keepImages:", keepImages);
+
+    // Convert keepImages to array of integers if it's a string
+    let keepIndices = [];
+    if (typeof keepImages === "string") {
+      // Handle comma-separated string of indices
+      keepIndices = keepImages
+        .split(",")
+        .map((idx) => parseInt(idx.trim()))
+        .filter((idx) => !isNaN(idx));
+    } else if (Array.isArray(keepImages)) {
+      // Handle array of indices (possibly as strings)
+      keepIndices = keepImages
+        .map((idx) => parseInt(idx))
+        .filter((idx) => !isNaN(idx));
+    }
+
+    console.log("Keeping images at indices:", keepIndices);
+
+    // Create a new array of images to keep
+    const newImages = [];
+    const deletePromises = [];
+
+    // Process each existing image
+    shoe.images.forEach((imageUrl, index) => {
+      if (keepIndices.includes(index)) {
+        // Keep this image
+        newImages.push(imageUrl);
+      } else {
+        // Delete this image from Cloudinary
+        console.log(`Deleting image at index ${index}:`, imageUrl);
+        deletePromises.push(deleteImageFromCloudinary(imageUrl));
+      }
+    });
+
+    // Wait for all deletion operations to complete
+    if (deletePromises.length > 0) {
+      const deletionResults = await Promise.all(deletePromises);
+      console.log("Image deletion results:", deletionResults);
+    }
+
+    // Update the shoe's images array
+    shoe.images = newImages;
+  }
+
+  // Handle new image uploads
   if (req.files && req.files.length > 0) {
+    console.log("Processing new uploaded files:", req.files.length);
+
     for (const file of req.files) {
+      console.log(
+        "Processing new file:",
+        file.originalname,
+        "at path:",
+        file.path
+      );
+
       // Upload each file to cloudinary
       const result = await uploadOnCloudinary(file.path, "shoes");
 
@@ -122,6 +217,7 @@ const updateShoe = asyncHandler(async (req, res) => {
 
       // Add new image URL to shoe's images array
       if (result?.url) {
+        console.log("Successfully uploaded new image:", result.url);
         shoe.images.push(result.url);
       }
     }
@@ -134,6 +230,50 @@ const updateShoe = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, shoe, "Shoe updated successfully"));
+});
+
+/**
+ * Delete a single image from a shoe (Admin only)
+ */
+const deleteShoeImage = asyncHandler(async (req, res) => {
+  const { id, imageIndex } = req.params;
+  const index = parseInt(imageIndex);
+
+  // Validate the index
+  if (isNaN(index) || index < 0) {
+    throw new ApiError(400, "Invalid image index");
+  }
+
+  // Find the shoe
+  const shoe = await Shoe.findById(id);
+  if (!shoe) {
+    throw new ApiError(404, "Shoe not found");
+  }
+
+  // Validate the image index is within range
+  if (!shoe.images || index >= shoe.images.length) {
+    throw new ApiError(404, "Image not found at specified index");
+  }
+
+  // Get the image URL to delete
+  const imageToDelete = shoe.images[index];
+
+  console.log(`Deleting image at index ${index}:`, imageToDelete);
+
+  // Delete from Cloudinary
+  const deleteResult = await deleteImageFromCloudinary(imageToDelete);
+
+  if (!deleteResult.success) {
+    throw new ApiError(500, "Failed to delete image from Cloudinary");
+  }
+
+  // Remove the image from the shoe's images array
+  shoe.images.splice(index, 1);
+  await shoe.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, shoe, "Image deleted successfully"));
 });
 
 /**
@@ -201,18 +341,75 @@ const getShoeById = asyncHandler(async (req, res) => {
 const deleteShoe = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
+  // Find the shoe to get the image URLs
   const shoe = await Shoe.findById(id);
   if (!shoe) {
     throw new ApiError(404, "Shoe not found");
   }
 
+  // Delete images from Cloudinary if they exist
+  if (shoe.images && shoe.images.length > 0) {
+    console.log("Deleting associated images from Cloudinary");
+
+    const deletePromises = shoe.images.map(async (imageUrl) => {
+      try {
+        // Extract the public ID from the Cloudinary URL
+        // URL format: https://res.cloudinary.com/cloud_name/image/upload/v1234567890/folder/public_id.ext
+        const urlParts = imageUrl.split("/");
+        const publicIdWithExtension = urlParts[urlParts.length - 1];
+        const publicId = publicIdWithExtension.split(".")[0];
+
+        // If images are in a folder, include the folder path
+        let fullPublicId = publicId;
+        if (imageUrl.includes("/shoes/")) {
+          fullPublicId = `shoes/${publicId}`;
+        }
+
+        console.log(`Deleting image with public ID: ${fullPublicId}`);
+
+        // Delete the image from Cloudinary
+        const result = await new Promise((resolve, reject) => {
+          cloudinary.uploader.destroy(fullPublicId, (error, result) => {
+            if (error) {
+              console.error(`Error deleting image ${fullPublicId}:`, error);
+              reject(error);
+            } else {
+              console.log(
+                `Image ${fullPublicId} deleted successfully:`,
+                result
+              );
+              resolve(result);
+            }
+          });
+        });
+
+        return result;
+      } catch (error) {
+        console.error(
+          `Error processing image deletion for ${imageUrl}:`,
+          error
+        );
+        return null;
+      }
+    });
+
+    // Wait for all deletion operations to complete
+    await Promise.all(deletePromises);
+  }
+
+  // Delete the shoe document from MongoDB
   await Shoe.findByIdAndDelete(id);
 
   return res
     .status(200)
-    .json(new ApiResponse(200, {}, "Shoe deleted successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        "Shoe and associated images deleted successfully"
+      )
+    );
 });
-
 // FILTERING AND SEARCH OPERATIONS
 
 /**
@@ -648,6 +845,7 @@ export {
   getShoeById,
   updateShoe,
   deleteShoe,
+  deleteShoeImage, // New export
 
   // Filtering and Search
   getShoesByCategory,
