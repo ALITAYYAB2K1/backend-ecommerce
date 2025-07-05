@@ -67,6 +67,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "user",
     },
+    // Wishlist field for storing favorite shoes
+    wishlist: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Shoe",
+      },
+    ],
   },
   {
     timestamps: true,

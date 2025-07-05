@@ -11,6 +11,9 @@ import {
   updatePassword,
   updateUserInfo,
   getUserProfile,
+  getUserWishlist,
+  removeFromWishlist,
+  getUserReviews,
 } from "../controller/User.controller.js";
 
 import {
@@ -26,6 +29,8 @@ import {
   getSimilarShoes,
   addShoeToWishlist,
   rateOrReviewShoe,
+  getShoeReviews,
+  deleteShoeReview,
   createShoe, // Add this for testing
 } from "../controller/Shoe.controller.js";
 
@@ -41,24 +46,30 @@ router.route("/update/password").patch(verifyJWT, updatePassword);
 router.route("/update-info").put(verifyJWT, updateUserInfo);
 router.route("/profile").get(verifyJWT, getUserProfile);
 
+// USER WISHLIST AND REVIEWS
+router.route("/wishlist").get(verifyJWT, getUserWishlist);
+router.route("/reviews").get(verifyJWT, getUserReviews);
+
 // PUBLIC SHOE BROWSING ROUTES
 router.route("/shoes").get(getAllShoes);
 
-// TEMPORARY TEST ROUTE FOR DEBUGGING (REMOVE IN PRODUCTION)
-router.route("/test-shoe-upload").post(upload.array("images", 5), createShoe);
-
-router.route("/shoes/:id").get(getShoeById);
-
-router.route("/shoes/category/:category").get(getShoesByCategory);
-router.route("/shoes/brand/:brand").get(getShoesByBrand);
-router.route("/shoes/search").get(searchShoes);
+// Specific routes MUST come before parameterized routes
 router.route("/shoes/featured").get(getFeaturedShoes);
 router.route("/shoes/sale").get(getShoesOnSale);
+router.route("/shoes/search").get(searchShoes);
 router.route("/shoes/filter").get(getShoesByFilters);
+router.route("/shoes/category/:category").get(getShoesByCategory);
+router.route("/shoes/brand/:brand").get(getShoesByBrand);
+
+// Parameterized routes come last
+router.route("/shoes/:id").get(getShoeById);
 router.route("/shoes/:id/similar").get(getSimilarShoes);
+router.route("/shoes/:id/reviews").get(getShoeReviews);
 
 // AUTHENTICATED USER ACTIONS
 router.route("/shoes/:id/wishlist").post(verifyJWT, addShoeToWishlist);
+router.route("/shoes/:id/wishlist").delete(verifyJWT, removeFromWishlist);
 router.route("/shoes/:id/review").post(verifyJWT, rateOrReviewShoe);
+router.route("/shoes/:id/review").delete(verifyJWT, deleteShoeReview);
 
 export default router;

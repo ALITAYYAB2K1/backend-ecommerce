@@ -2,6 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/User.models.js";
+import { Review } from "../models/Review.models.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
@@ -467,6 +468,99 @@ const getAllUsers = asyncHandler(async (req, res) => {
     )
   );
 });
+/**
+ * Get user's wishlist
+ */
+const getUserWishlist = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const user = await User.findById(userId).populate({
+    path: "wishlist",
+    select: "name description price brand images gender category discount",
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, user.wishlist, "Wishlist retrieved successfully")
+    );
+});
+
+/**
+ * Remove shoe from wishlist
+ */
+const removeFromWishlist = asyncHandler(async (req, res) => {
+  const { id } = req.params; // Shoe ID
+  const userId = req.user._id;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Check if shoe exists in wishlist
+  if (!user.wishlist || !user.wishlist.includes(id)) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, { inWishlist: false }, "Shoe not in wishlist")
+      );
+  }
+
+  // Remove from wishlist
+  user.wishlist = user.wishlist.filter((shoeId) => shoeId.toString() !== id);
+  await user.save();
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, { inWishlist: false }, "Shoe removed from wishlist")
+    );
+});
+
+/**
+ * Get user's reviews
+ */
+const getUserReviews = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { page = 1, limit = 10 } = req.query;
+
+  const pageNumber = parseInt(page);
+  const limitNumber = parseInt(limit);
+
+  const reviews = await Review.find({ userId })
+    .populate({
+      path: "shoeId",
+      select: "name brand images price",
+    })
+    .sort({ createdAt: -1 })
+    .skip((pageNumber - 1) * limitNumber)
+    .limit(limitNumber);
+
+  const totalReviews = await Review.countDocuments({ userId });
+  const totalPages = Math.ceil(totalReviews / limitNumber);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        reviews,
+        pagination: {
+          total: totalReviews,
+          page: pageNumber,
+          limit: limitNumber,
+          totalPages,
+        },
+      },
+      "User reviews retrieved successfully"
+    )
+  );
+});
+
 export {
   registerUser,
   registerAdmin,
@@ -478,4 +572,7 @@ export {
   updatePassword,
   forgotPassword,
   getAllUsers,
+  getUserWishlist,
+  removeFromWishlist,
+  getUserReviews,
 };
