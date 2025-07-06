@@ -34,6 +34,16 @@ import {
   createShoe, // Add this for testing
 } from "../controller/Shoe.controller.js";
 
+import {
+  // Import cart controllers
+  getCart,
+  addToCart,
+  updateCartItem,
+  removeFromCart,
+  clearCart,
+  getCartSummary,
+} from "../controller/Cart.controller.js";
+
 const router = Router();
 
 // USER AUTHENTICATION ROUTES
@@ -49,6 +59,14 @@ router.route("/profile").get(verifyJWT, getUserProfile);
 // USER WISHLIST AND REVIEWS
 router.route("/wishlist").get(verifyJWT, getUserWishlist);
 router.route("/reviews").get(verifyJWT, getUserReviews);
+
+// USER CART MANAGEMENT
+router.route("/cart").get(verifyJWT, getCart);
+router.route("/cart").post(verifyJWT, addToCart);
+router.route("/cart").put(verifyJWT, updateCartItem);
+router.route("/cart").delete(verifyJWT, clearCart);
+router.route("/cart/remove").post(verifyJWT, removeFromCart);
+router.route("/cart/summary").get(verifyJWT, getCartSummary);
 
 // PUBLIC SHOE BROWSING ROUTES
 router.route("/shoes").get(getAllShoes);
