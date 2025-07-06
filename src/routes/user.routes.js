@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
-import { upload } from "../middlewares/multer.middleware.js";
 import {
   // User authentication controllers only
   registerUser,
@@ -31,7 +30,6 @@ import {
   rateOrReviewShoe,
   getShoeReviews,
   deleteShoeReview,
-  createShoe, // Add this for testing
 } from "../controller/Shoe.controller.js";
 
 import {
@@ -43,6 +41,15 @@ import {
   clearCart,
   getCartSummary,
 } from "../controller/Cart.controller.js";
+
+import {
+  // Import order controllers
+  createOrder,
+  getUserOrders,
+  getOrderById,
+  cancelOrder,
+  updateProfileForCheckout,
+} from "../controller/Order.controller.js";
 
 const router = Router();
 
@@ -67,6 +74,13 @@ router.route("/cart").put(verifyJWT, updateCartItem);
 router.route("/cart").delete(verifyJWT, clearCart);
 router.route("/cart/remove").post(verifyJWT, removeFromCart);
 router.route("/cart/summary").get(verifyJWT, getCartSummary);
+
+// USER ORDER MANAGEMENT
+router.route("/orders").post(verifyJWT, createOrder);
+router.route("/orders").get(verifyJWT, getUserOrders);
+router.route("/orders/:id").get(verifyJWT, getOrderById);
+router.route("/orders/:id/cancel").patch(verifyJWT, cancelOrder);
+router.route("/profile/checkout").put(verifyJWT, updateProfileForCheckout);
 
 // PUBLIC SHOE BROWSING ROUTES
 router.route("/shoes").get(getAllShoes);

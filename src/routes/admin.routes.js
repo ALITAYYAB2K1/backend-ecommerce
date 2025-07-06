@@ -21,6 +21,16 @@ import {
   searchShoes,
   getShoesByFilters,
 } from "../controller/Shoe.controller.js";
+import {
+  // Import admin order controllers
+  getAllOrders,
+  getOrderStats,
+  updateOrderStatus,
+  updatePaymentStatus,
+  deleteOrder,
+  getOrderByIdAdmin,
+} from "../controller/AdminOrder.controller.js";
+
 import { getAllUsers } from "../controller/User.controller.js";
 const router = Router();
 
@@ -60,5 +70,13 @@ router.route("/shoes/category/:category").get(getShoesByCategory);
 router.route("/shoes/brand/:brand").get(getShoesByBrand);
 router.route("/shoes/search").get(searchShoes);
 router.route("/shoes/filter").get(getShoesByFilters);
+
+// ADMIN ORDER MANAGEMENT
+router.route("/orders").get(getAllOrders);
+router.route("/orders/stats").get(getOrderStats);
+router.route("/orders/:id").get(getOrderByIdAdmin);
+router.route("/orders/:id/status").patch(updateOrderStatus);
+router.route("/orders/:id/payment").patch(updatePaymentStatus);
+router.route("/orders/:id").delete(deleteOrder);
 
 export default router;
